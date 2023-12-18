@@ -3,7 +3,7 @@ async function main() {
     const { Buffer } = require('node:buffer')
     const { createBluetooth } = require('node-ble') // API Docs: https://github.com/chrvadala/node-ble/blob/main/docs/api.md
     const { bluetooth, destroy } = createBluetooth() //this is the same as const bluetooth = (object returned by createBluetooth()).bluetooth; const destroy = (object returned by createBluetooth()).destroy;
-    const { mqtt } = require('mqtt'); // API documentation: https://www.npmjs.com/package/mqtt
+    const mqtt = require('mqtt'); // API documentation: https://www.npmjs.com/package/mqtt
 
     const DEVICE_MAC = 'ED:C0:A4:E9:1A:58'
 
@@ -17,7 +17,40 @@ async function main() {
     const ACCEL_CHAR_Y = "00000001-0002-0003-0004-000000000002"
     const ACCEL_CHAR_Z = "00000001-0002-0003-0004-000000000003"
 
-    // Get first available Bluetoothe adapter
+    const TOPIC_SUB = "package/control"
+    const TOPIC_PUB = "package/log"
+
+    //to work with personal instance on hivemq (assuming instance has been set up already with password and username as shown below)
+    const OPTIONS = {
+        username: 'sarajevo',
+        password: 'Sarajev0',
+        host: '880450a59920465f9ab1e122ea96bc54.s2.eu.hivemq.cloud',
+        port: 8883,
+        protocol: 'mqtts',
+    };
+
+    var mqttClient = mqtt.connect(OPTIONS);
+
+    connectHandler = () => {
+        console.log("Connected to MQTT Broker")
+        mqttClient.subscribe(TOPIC_SUB, (err, granted) => {
+            if (err){
+                console.log("Error subscribing to '" + TOPIC_SUB + "'")
+            } else {
+                granted.forEach((elem) => {
+                    console.log(elem)
+                })
+            }
+        })
+        message =  "Hello from Earth"
+        mqttClient.publish(TOPIC_PUB, message, () => {
+            console.log(`Publishing message '${message}' to topic '${TOPIC_PUB}'`)
+        })
+    }
+
+    mqttClient.on("connect", connectHandler)
+
+    // Get first available Bluetooth adapter
     const adapter = await bluetooth.defaultAdapter()
 
     // Enable Bluetooth discovery
@@ -64,27 +97,44 @@ async function main() {
     //  Report that everything is "OK"
     //  Report that the package is slightly tilted with a "WARN"
     //  Report that something is seriouslt wrong with an "ERROR" and turn on the LEDs
-    for (let index = 0; index < 10; index++) {
+    let index = 0
+    let package_reset = false
+
+    mqttClient.on("message", (topic, payload, packet) => {
+        console.log(`Recieved message "${String(payload)}'`)
+        if (String(payload) == "reset")
+            package_reset = true
+    })
+
+    while (true) {
         console.log("Loop iteration: " + index)
         buffer = await accelCharZ.readValue()
-        value = buffer.readInt32LE()*-1
+        value = buffer.readInt32LE() * -1
         console.log(value)
 
-        if (value > 800){
-            console.log("Orientation: OK")
-            ledChar.writeValue(new Buffer.from([0]))
-        } else if (value > 500 && value < 800){
-            console.log("Orientation: WARN")
-            ledChar.writeValue(new Buffer.from([0]))
+        if (value > 800) {
+            package_orientation = "Orientation: OK"
+        } else if (value > 500 && value < 800) {
+            package_orientation = "Orientation: WARN"
         } else {
-            console.log("Orientation: ERROR")
+            package_orientation = "Orientation: ERROR"
             ledChar.writeValue(new Buffer.from([1]))
         }
+
+        if (package_reset){
+            await ledChar.writeValue(new Buffer.from([0]))
+            mqttClient.publish(TOPIC_PUB, "package deleiverd")
+            break
+        }
+
+        console.log(package_orientation)
+        mqttClient.publish(TOPIC_PUB, package_orientation)
         await new Promise((resolve) => setTimeout((resolve), 500))//delay for 2 seconds
+        index++
     }
 
     destroy()
-    process.exit()
+    mqttClient.end()
 }
 
 main().then().catch(console.error)
