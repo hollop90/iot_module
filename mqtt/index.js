@@ -20,7 +20,7 @@ async function main() {
     const TOPIC_SUB = "package/control"
     const TOPIC_PUB = "package/log"
 
-    //to work with personal instance on hivemq (assuming instance has been set up already with password and username as shown below)
+    // Data required to connect and communicate with the HiveMQ broker instance
     const OPTIONS = {
         username: 'sarajevo',
         password: 'Sarajev0',
@@ -29,26 +29,30 @@ async function main() {
         protocol: 'mqtts',
     };
 
-    var mqttClient = mqtt.connect(OPTIONS);
+    const mqttClient = mqtt.connect(OPTIONS);
 
-    connectHandler = () => {
+    // Connect event handler
+    mqttClient.on("connect", () => {
         console.log("Connected to MQTT Broker")
+        // Attempt to subscrive to topic
         mqttClient.subscribe(TOPIC_SUB, (err, granted) => {
+            // On subscription failure log errors to output
             if (err){
                 console.log("Error subscribing to '" + TOPIC_SUB + "'")
+            // On success print topics to stdout
             } else {
                 granted.forEach((elem) => {
                     console.log(elem)
                 })
             }
         })
-        message =  "Hello from Earth"
+        message =  "Hello from Earth" // Extracted message variable for sting interpolation
+
+        // Publish initial message and log to stdout
         mqttClient.publish(TOPIC_PUB, message, () => {
             console.log(`Publishing message '${message}' to topic '${TOPIC_PUB}'`)
         })
-    }
-
-    mqttClient.on("connect", connectHandler)
+    })
 
     // Get first available Bluetooth adapter
     const adapter = await bluetooth.defaultAdapter()
@@ -91,26 +95,29 @@ async function main() {
     buffer = await ledChar.readValue()
     console.log(buffer)
 
+    let index = 0
+    let package_reset = false
+
+    // Message recieved handler
+    mqttClient.on("message", (topic, payload, packet) => {
+        // Log recieved message
+        console.log(`Recieved message '${String(payload)}' from topic '${topic}'`)
+        // If message matches string, set variable to true
+        if (String(payload) == "reset")
+            package_reset = true
+    })
+
     // Begin our asset tracking application
     // We will use the accelerometer to measure the orientatoin of a package
     // Depending on the orientaion of the package we will:
     //  Report that everything is "OK"
     //  Report that the package is slightly tilted with a "WARN"
-    //  Report that something is seriouslt wrong with an "ERROR" and turn on the LEDs
-    let index = 0
-    let package_reset = false
-
-    mqttClient.on("message", (topic, payload, packet) => {
-        console.log(`Recieved message "${String(payload)}'`)
-        if (String(payload) == "reset")
-            package_reset = true
-    })
-
+    //  Report that something is seriously wrong with an "ERROR" and turn on the LEDs
     while (true) {
         console.log("Loop iteration: " + index)
-        buffer = await accelCharZ.readValue()
-        value = buffer.readInt32LE() * -1
-        console.log(value)
+        buffer = await accelCharZ.readValue() // Read BLE data into a buffer
+        value = buffer.readInt32LE() * -1 // Cast that buffer into an integer and flip the sign
+        console.log(`Accelerometer value: '${value}'`)
 
         if (value > 800) {
             package_orientation = "Orientation: OK"
@@ -121,20 +128,24 @@ async function main() {
             ledChar.writeValue(new Buffer.from([1]))
         }
 
+        // If package is "delivered" turn off ERROR LED and break out of app loop
         if (package_reset){
             await ledChar.writeValue(new Buffer.from([0]))
             mqttClient.publish(TOPIC_PUB, "package deleiverd")
             break
         }
 
-        console.log(package_orientation)
-        mqttClient.publish(TOPIC_PUB, package_orientation)
+        mqttClient.publish(TOPIC_PUB, package_orientation, () => {
+            console.log(`Published message '${package_orientation}' to topic '${TOPIC_PUB}'`)
+        })
         await new Promise((resolve) => setTimeout((resolve), 500))//delay for 2 seconds
         index++
     }
 
+    // Close BLE and MQTT clients
     destroy()
     mqttClient.end()
 }
 
+// Lon any errors
 main().then().catch(console.error)
