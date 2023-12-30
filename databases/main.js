@@ -24,6 +24,17 @@ async function main() {
 
     const dbConn = mariadb.createConnection({host: '127.0.0.1', user:'ugo', password: 'ugo', database: 'ugo_iot'});
 
+    dbConn.query('INSERT INTO iotTable VALUES ("Woody Microbit", 8283)', insertCallback);
+
+    function insertCallback(err, res)  	{
+    	if (err) {
+          console.log(err.message);
+        } else {
+    		console.log(res);
+    		dbConn.end();
+    	}
+    }
+
     // Data required to connect and communicate with the HiveMQ broker instance
     const OPTIONS = {
         username: 'sarajevo',
