@@ -1,7 +1,9 @@
 //MQTT broker dashboard available at http://www.hivemq.com/demos/websocket-client/
 var mqtt = require('mqtt'); // API documentation: https://www.npmjs.com/package/mqtt
-var topicToSubscribeTo = "iot_topic/accel"
-var topicToPublishTo = "iot_topic/accel"
+// var topicToSubscribeTo = "iot_topic/accel"
+// var topicToPublishTo = "iot_topic/accel"
+var topicToSubscribeTo = "package/log"
+var topicToPublishTo = "package/log"
 
 //to work with personal instance on hivemq (assuming instance has been set up already with password and username as shown below)
 const options = {
@@ -14,7 +16,7 @@ const options = {
 
 var mqttClient = mqtt.connect(options);
 
-//event handler function 
+//event handler function
 function connectedToBrokerEventHandler() {
   console.log("connected to MQTT broker");
   mqttClient.subscribe(topicToSubscribeTo, subscribeCallback); /* sample3 MQTT code */
@@ -33,7 +35,7 @@ function subscribeCallback(error, granted) {
   }
 }
 
-//event handler function 
+//event handler function
 function messageEventHandler(topic, message, packet) {
   console.log("Received message'" + message + "' on topic '" + topic + "'");
 }
